@@ -1,0 +1,157 @@
+---
+title: "Teildatensatz flow cytometer Daten als Beispiel für Sören"
+author: "FS"
+date: "2023-09-26"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(forcats)
+library(hnp)
+library(emmeans)
+library(VGAM)
+library(readxl)
+library(xlsx)
+```
+
+Ich habe aus deinen Daten einen vereinfachten Teildatensatz rausgenommen, und versucht, die zellbiologischen Details zu verblinden, so dass keine Information zu den konkreten Zelltypen, Medien, Markern gegeben wird. Damit kein Risiko besteht, dass wir (falls wir soweit kommen!) in einer stat. Publikation irgendwelche konkreten Ergebnisse/Themen eurer Forschung vorwegnehmen. Wenn Dir/Euch das noch nicht verblindet genug ist, kann ich das auch noch weiter reduzieren.
+
+Wir würden im Zusammenhang mit diesen Teildatensatz gerne folgendes erklären:
+
+* den grundlegenden Versuchsaufbau: 
+
+  * 4 Donoren von denen die Zellen kommen (donor: d1,d2,d3,d4) 
+  * und die an 4 getrennten Zeitpunkten prozessiert werden (?)
+  * bei denen jeweils die Zellen auf 3x2 "Behandlungs"-gruppen aufgeteilt werden,
+  * 3 Medien (med: 'm2', 'm3', 'm3s') ACHTUNG: Streng genommen kommen je Donor und cult die beiden Beobachtungen zu med m3 und med m3s aus dem gleichen Kulturgefäss (Probenahme von 2 verschiedene Fraktionen des gleichen Mediums), hier ist als eigentlcih noch eine weitere hierarchische struktur emnthalten, die aber bei m2 nicht vorkommt. Gegebenenfalls: med: m3s aus Analyse rauslassen.
+  * 2 Kulturvarianten (cult: 'single', 'mix')
+  
+* die 'Datenentstehung':
+
+  * je Donor und 'Behandlungs'-gruppe sollen  
+  
+  * 10000 Zellen im Flow cytometer klassifiziert werden:
+  * vereinzelt reicht das Material nicht für 10000 Zellen
+  * von denen ist ein Teil nicht klassifizierbar ist, weil geklumpt,
+  * ein Teil der Zellen ist tot,
+  * und der Rest ('living'): wird anhand von 2 Markern mit je 2 Zuständen (aA, bB) in 4 Kategorien eingeteilt: celltype: ab, Ab, AB, aB
+  * von Interesse sind Vergleiche der Häufigkeiten dieser 4 Kategorien zwischen den 6 Behandlungsgruppen
+  
+Ist das so für euch ok, wenn diese Beschreibung mit dem Datensatz verwendet würde?
+
+
+```{r}
+load("dflowcytr.rda")
+```
+
+
+```{r fig.width=10, fig.height=4, outwidth="90%", warning=FALSE, message=FALSE}
+dflowcytr %>% ggplot(aes(y=count/living, x=donor))+
+  #geom_col(aes(width=1), fill="white", color="black")+
+  geom_col(aes(fill=celltype, group=donor:cult:med, width=living/nocells), stat="identity", position="stack") +
+  facet_grid(~cultmed, labeller=label_both) + 
+  scale_fill_manual(values=c("grey", "yellow", "green", "blue"))+
+  theme_bw() +
+  ylab("proportion of cell type (among living cells)")+
+  xlab("donor; width of bars: proportion of (no. of living cells)/(total no. of cells)")
+```
+
+
+```{r fig.width=10, fig.height=4, outwidth="90%",warning=FALSE, message=FALSE}
+dflowcytr %>% ggplot(aes(y=count/living, x=cultmed))+
+  #geom_col(aes(width=1), fill="white", color="black")+
+  geom_col(aes(fill=celltype, group=donor:cult:med, width=living/nocells), stat="identity", position="stack") +
+  facet_grid(~donor, labeller=label_both) + 
+  scale_fill_manual(values=c("grey", "yellow", "green", "blue"))+
+  theme_bw() +  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  ylab("proportion of cell type (among living cells)")+
+  xlab("culture:medium; width of bars: proportion of (no. of living cells)/(total no. of cells)")
+```
+
+
+```{r}
+dflowcytrw <- pivot_wider(dflowcytr, names_from=celltype, values_from=count)
+str(as.data.frame(dflowcytrw))
+write.xlsx(dflowcytrw, file="dflowcytrw.xlsx")
+```
+
+
+# Analysis by 4 separate quasibinomial models each celltype vs the rest
+
+```{r}
+fab <- glm(cbind(ab,living-ab) ~ donor + cultmed, data=dflowcytrw, family=quasibinomial())
+fAb <- glm(cbind(Ab,living-Ab) ~ donor + cultmed, data=dflowcytrw, family=quasibinomial())
+fAB <- glm(cbind(AB,living-AB) ~ donor + cultmed, data=dflowcytrw, family=quasibinomial())
+faB <- glm(cbind(aB,living-aB) ~ donor + cultmed, data=dflowcytrw, family=quasibinomial())
+```
+
+## Check adequacy of quasibinomial assumption by category using hnp()
+
+* In diesem Teildatensatz kein wiederspruch zur annahme quasibinomial je Endpunkt
+
+```{r}
+library(hnp)
+
+hnp(fab, halfnormal = FALSE, paint.out=TRUE, sim=2000, pch=16)
+hnp(fAb, halfnormal = FALSE, paint.out=TRUE, sim=2000, pch=16)
+hnp(fAB, halfnormal = FALSE, paint.out=TRUE, sim=2000, pch=16)
+hnp(faB, halfnormal = FALSE, paint.out=TRUE, sim=2000, pch=16)
+```
+
+## Observed disperions by category
+
+* Unterschiedliche Dispersionsschätzer, fraglich ob das bei der Fallzahl auch zufall sein kann.
+
+```{r}
+summary(fab)$dispersion
+summary(fAb)$dispersion
+summary(fAB)$dispersion
+summary(faB)$dispersion
+```
+
+## Analysis of deviance
+
+```{r}
+anova(fab, test="F")
+anova(fAb, test="F")
+anova(fAB, test="F")
+anova(faB, test="F")
+```
+
+## emmeans
+
+```{r}
+library(emmeans)
+
+emmfab<-emmeans(fab, specs="cultmed", contr="pairwise", adj="mvt")
+emmfAb<-emmeans(fAb, specs="cultmed", contr="pairwise", adj="mvt")
+emmfAB<-emmeans(fAB, specs="cultmed", contr="pairwise", adj="mvt")
+emmfaB<-emmeans(faB, specs="cultmed", contr="pairwise", adj="mvt")
+
+emmfab$contrasts
+emmfAb$contrasts
+emmfAB$contrasts
+emmfaB$contrasts
+```
+
+# Baseline logit model with multinomial assumption
+
+```{r eval=FALSE}
+
+library("VGAM")
+
+fit <- vglm(cbind(ab, Ab, AB, aB) ~ donor + cultmed, data=dflowcytrw, family=multinomial)
+summary(fit)
+class(fit)
+
+anova(fit)
+confint(fit)
+confint(fit, method="profile")
+
+# emmeans(fit, specs="cultmed")
+```
+
