@@ -15,39 +15,39 @@ The folder "Code_and_Data" contains the following data and files that can be use
 all analyses and figures of the manuscript.
 It contains three subfolders with the following files:
 
-./Code/:
-This folder contains the Code for the Simulation Study and for the evaluation of the examples 
-presented in the manuscript.
+        ./Code/:
+        This folder contains the Code for the Simulation Study and for the evaluation of the examples 
+        presented in the manuscript.
 
-        ./Example_Analysis/:
-        This folder contains the R file "Example_Analysis.R" to evaulate the three examples.
-        The subfolders contain the corresponding datasets
+                ./Example_Analysis/:
+                This folder contains the R file "Example_Analysis.R" to evaulate the three examples.
+                The subfolders contain the corresponding datasets
+        
+                ./Simulation_Study/:
+                This folder contains all r files which are necessary to reproduce the results of the simulation study
+                The mult_sim_main.R file is used to run the main simulation study. The Code_and_Data folder must be set as the path. 
+                The number of simulations should be adjusted accordingly. The Dirichlet-multinomial model is 
+                relatively computationally intensive and can drastically increase the time required.
+                The mult_sim_addzero.R file is used to run the additional simulation study in which a one is added 
+                to a random cluster within a group. The Code_and_Data folder must be set as the path. 
+                The number of simulations should be adjusted accordingly.
+                After the simulation has been run, the file mult_sim_data_preprocessing.R is used to 
+                process the results and summarise them in an .rds file
+                The mult_sim_graphs.R can then be used to reproduce the graphics from the manuscript 
+                with the final result file.
 
-        ./Simulation_Study/:
-        This folder contains all r files which are necessary to reproduce the results of the simulation study
-        The mult_sim_main.R file is used to run the main simulation study. The Code_and_Data folder must be set as the path. 
-        The number of simulations should be adjusted accordingly. The Dirichlet-multinomial model is 
-        relatively computationally intensive and can drastically increase the time required.
-        The mult_sim_addzero.R file is used to run the additional simulation study in which a one is added 
-        to a random cluster within a group. The Code_and_Data folder must be set as the path. 
-        The number of simulations should be adjusted accordingly.
-        After the simulation has been run, the file mult_sim_data_preprocessing.R is used to 
-        process the results and summarise them in an .rds file
-        The mult_sim_graphs.R can then be used to reproduce the graphics from the manuscript 
-        with the final result file.
+        ./Figures/:
+        This folder contains all the graphics shown in the manuscript and produced by the given R-code
+        
+        ./Results/:
+        This folder contains the processed results from the intermediate results of the simulation file. 
+        Due to the size of the intermediate results, they were not uploaded to Github
 
-./Figures/:
-This folder contains all the graphics shown in the manuscript and produced by the given R-code
-
-./Results/:
-This folder contains the processed results from the intermediate results of the simulation file. 
-Due to the size of the intermediate results, they were not uploaded to Github
-
-    ./main/:
-    This subfolder contains the processed results from the main simulation study
-
-    ./zero_handling/:
-    This subfolder contains the processed results of the simulation with the added ones
+                ./main/:
+                This subfolder contains the processed results from the main simulation study
+                
+                ./zero_handling/:
+                This subfolder contains the processed results of the simulation with the added ones
 
 
 
