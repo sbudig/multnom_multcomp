@@ -113,14 +113,12 @@ for (i in 1:length(v_reslist)) {
       estprobsmean = mean(estprobs),
       estbias = estprobs - trueprobs,
       estbiasSE = (estprobs - estprobsmean) ^ 2,
-      estbiasMSE = (estprobs - trueprobs) ^ 2,
-      phib = disphat - phi
+      estbiasMSE = (estprobs - trueprobs) ^ 2
     ) %>%
     summarise(
       probbias = sum(estbias),
       probbiasSE = sum(estbiasSE),
-      probbiasMSE = sum(estbiasMSE),
-      phibiasalt = sum(phib)
+      probbiasMSE = sum(estbiasMSE)
     )
   
   df_temp_sum <- df_temp %>% group_by(props,
@@ -137,22 +135,13 @@ for (i in 1:length(v_reslist)) {
                                       HAinc,
                                       cH0,
                                       cHA) %>% drop_na(cFWER) %>%
-    mutate(
-      phimean = mean(disphat),
-      estphibias = disphat - phi,
-      estphibiasSE = (disphat - phimean) ^ 2,
-      estphibiasMSE = (disphat - phi) ^ 2
-    ) %>%
     summarise(
       sim = sum(sim, na.rm = TRUE),
       cFWER = sum(cFWER, na.rm = TRUE),
       cPower = sum(cPower, na.rm = TRUE),
       cgPower = sum(cgPower, na.rm = TRUE),
-      cConf = sum(cConf, na.rm = TRUE),
-      phibias = (1 / sim) * sum(estphibias, na.rm = TRUE),
-      phibiasSE = sqrt((1 / (sim - 1)) * sum(estphibiasSE, na.rm = TRUE)),
-      phibiasMSE = (1 / sim) * sum(estphibiasMSE, na.rm = TRUE),
-      
+      cpPower = sum(cpPower, na.rm = TRUE),
+      cConf = sum(cConf, na.rm = TRUE)
     )
   
   df_temp_fin <- cbind(df_temp_propbias[, -c(1:14)], df_temp_sum)
@@ -202,6 +191,8 @@ for (i in 1:length(v_reslist)) {
       Power_wiNA = cPower / totsim,
       gPower_woNA = cgPower / sim,
       gPower_wiNA = cgPower / totsim,
+      cpPower_woNA = cpPower / sim,
+      cpPower_wiNA = cpPower / totsim,
       covprob_woNA = cConf / sim,
       covprob_wiNA = cConf / totsim,
     )
@@ -210,15 +201,12 @@ for (i in 1:length(v_reslist)) {
   
 }
 
-
 l_dat_main <- bind_rows(l_dat)
 
 saveRDS(l_dat_main, "mult_sim_main.rds")
 
-
 ## Zero handling Data -----------------------------------------------------
 
-#setwd(".\\Code_and_Data")
 setwd(".\\Results\\zero_handling")
 
 v_reslist <- list.files(pattern = ".rds")
@@ -286,14 +274,12 @@ for (i in 1:length(v_reslist)) {
       estprobsmean = mean(estprobs),
       estbias = estprobs - trueprobs,
       estbiasSE = (estprobs - estprobsmean) ^ 2,
-      estbiasMSE = (estprobs - trueprobs) ^ 2,
-      phib = disphat - phi
+      estbiasMSE = (estprobs - trueprobs) ^ 2
     ) %>%
     summarise(
       probbias = sum(estbias),
       probbiasSE = sum(estbiasSE),
-      probbiasMSE = sum(estbiasMSE),
-      phibiasalt = sum(phib)
+      probbiasMSE = sum(estbiasMSE)
     )
   
   df_temp_sum <- df_temp %>% group_by(props,
@@ -312,21 +298,13 @@ for (i in 1:length(v_reslist)) {
                                       HAinc,
                                       cH0,
                                       cHA) %>% drop_na(cFWER) %>%
-    mutate(
-      phimean = mean(disphat),
-      estphibias = disphat - phi,
-      estphibiasSE = (disphat - phimean) ^ 2,
-      estphibiasMSE = (disphat - phi) ^ 2
-    ) %>%
     summarise(
       sim = sum(sim, na.rm = TRUE),
       cFWER = sum(cFWER, na.rm = TRUE),
       cPower = sum(cPower, na.rm = TRUE),
       cgPower = sum(cgPower, na.rm = TRUE),
-      cConf = sum(cConf, na.rm = TRUE),
-      phibias = (1 / sim) * sum(estphibias, na.rm = TRUE),
-      phibiasSE = sqrt((1 / (sim - 1)) * sum(estphibiasSE, na.rm = TRUE)),
-      phibiasMSE = (1 / sim) * sum(estphibiasMSE, na.rm = TRUE),
+      cpPower = sum(cpPower, na.rm = TRUE),
+      cConf = sum(cConf, na.rm = TRUE)
       
     )
   
@@ -381,6 +359,8 @@ for (i in 1:length(v_reslist)) {
       Power_wiNA = cPower / totsim,
       gPower_woNA = cgPower / sim,
       gPower_wiNA = cgPower / totsim,
+      cpPower_woNA = cpPower / sim,
+      cpPower_wiNA = cpPower / totsim,
       covprob_woNA = cConf / sim,
       covprob_wiNA = cConf / totsim,
     )

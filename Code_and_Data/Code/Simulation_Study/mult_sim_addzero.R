@@ -2,8 +2,7 @@
 
 # use parent directory ".\\Code_and_Data"
 
-#setwd(".\\Code_and_Data")
-setwd(".\\Results\\zero_handling")
+#setwd(".\\Results\\zero_handling")
 
 # Packages ----------------------------------------------------------------
 
@@ -11,6 +10,7 @@ library(multcomp)
 library(MCMCpack)
 library(VGAM)
 library(tidyverse)
+library(MGLM)
 
 # Explanation of variables ------------------------------------------------
 
@@ -18,7 +18,7 @@ library(tidyverse)
 # phi: set dispersion parameter
 # m: cluster size
 # b: sample size of clusters
-# comp: Tukey or Dunnet comparisons with glht
+# comp: Tukey or Dunnett comparisons with glht
 # modeltype: method used for model fitting and dispersion calculation
 # dfu: whether degrees of freedom are specified for singlep adjustment (either mvt- or mvn-distribution)
 # nsim: total number of simulations per simulation run (not used for sum(sim))
@@ -282,7 +282,7 @@ mcp2matrix <- function(model, linfct){
 
 ## Functions to prepare model parameters for use in glht() ----------------
 
-multin2mcp <- function(object, dispersion=c("none","pearson","afroz","fletcher","deviance","dirmultinomial")){
+multin2mcp <- function(object, dispersion=c("none","pearson","afroz","farrington","deviance","DM_VGAM")){
   
   disptype <- match.arg(dispersion)
   
@@ -299,15 +299,15 @@ multin2mcp <- function(object, dispersion=c("none","pearson","afroz","fletcher",
            vcov <- vcov.disp(object, "afroz")*vcov(object)
            df = object@df.residual
          },
-         fletcher = {
-           vcov <-vcov.disp(object, "fletcher")*vcov(object)
+         farrington = {
+           vcov <-vcov.disp(object, "farrington")*vcov(object)
            df = object@df.residual
          },
          deviance = {
            vcov <-vcov.disp(object, "deviance")*vcov(object)
            df = object@df.residual
          },
-         dirmultinomial = {
+         DM_VGAM = {
            vcov <-vcov(object)
            df = object@misc$n*(object@misc$M-1)-object@misc$ncol.X.vlm
          }
@@ -317,7 +317,7 @@ multin2mcp <- function(object, dispersion=c("none","pearson","afroz","fletcher",
 }
 
 # Estimate Dispersion Parameter
-vcov.disp <- function(model, dispersion=c("multinomial","pearson","afroz","fletcher","dirmultinomial","deviance")){
+vcov.disp <- function(model, dispersion=c("multinomial","pearson","afroz","farrington","DM_VGAM","deviance")){
   
   disptype <- match.arg(dispersion)
   
@@ -325,32 +325,33 @@ vcov.disp <- function(model, dispersion=c("multinomial","pearson","afroz","fletc
     return(NA)
   }
   
-  if (disptype == "dirmultinomial"){
+  if (disptype == "DM_VGAM"){
     icc <- expit(model@coefficients[length(model@misc$predictors.names)][[1]])
     phi <- 1 + (unique(model@extra$n2)-1)*icc
     return(phi)
   }
   
   y_vglm <- model@y
+  y_vglm <- matrix(y_vglm, ncol = ncol(y_vglm))
   N_vglm <- length(y_vglm)
-  w_vglm <- model@prior.weights
-  w_vglm <- rep(w_vglm, each = (N_vglm/length(w_vglm)))
+  w_vglm <- as.vector(model@prior.weights)
   
   pi_vglm <- model@fitted.values
+  pi_vglm <- as.matrix(pi_vglm, ncol = ncol(pi_vglm))
   
   n_vglm <- model@misc$n
   
-  s.bar_vglm <- sum((y_vglm - pi_vglm)/pi_vglm)/(N_vglm - n_vglm)
+  s.bar_vglm <- sum((y_vglm - pi_vglm)/pi_vglm/(N_vglm - n_vglm))
   
-  X2_vglm <- sum(w_vglm*(y_vglm - pi_vglm)^2/pi_vglm)
+  X2_vglm <- sum((y_vglm*w_vglm - pi_vglm*w_vglm) ^ 2 / (pi_vglm*w_vglm))
   
-  phi.Pearson <- X2_vglm/model@df.residual
+  phi.Pearson <- X2_vglm / model@df.residual
   
   switch (disptype,
           multinomial = {phi <- 1},
           pearson = {phi <- phi.Pearson},
           afroz = {phi <- (phi.Pearson/(1 + s.bar_vglm))},
-          fletcher = {phi <- (phi.Pearson - (N_vglm - n_vglm)*s.bar_vglm/(model@df.residual))},
+          farrington = {phi <- (phi.Pearson - (N_vglm - n_vglm)*s.bar_vglm/(model@df.residual))},
           deviance = {phi <- model@criterion$deviance/model@df.residual}
   )
   
@@ -360,22 +361,22 @@ vcov.disp <- function(model, dispersion=c("multinomial","pearson","afroz","fletc
 
 ## Fit multinomial model function -----------------------------------------
 
-
 f_fit_mult <-
   function(df_i,
            modeltype = c("multinomial",
                          "pearson",
                          "afroz",
-                         "fletcher",
+                         "farrington",
                          "deviance",
-                         "dirmultinomial")) {
+                         "DM_VGAM",
+                         "DM_MGLM")) {
     
     modeltype <- match.arg(modeltype)
     
     t_formula <- paste0("cbind(",
                         paste0(colnames(df_i[2:(length(df_i) - 1)]),
                                collapse = ","),",V1) ~ group")
-
+    #assign("last.warning", NULL, envir = globalenv())
     warning_text <- NULL
     
     switch(
@@ -383,7 +384,7 @@ f_fit_mult <-
       multinomial = ,
       pearson = ,
       afroz = ,
-      fletcher = ,
+      farrington = ,
       deviance = {
         modeloutput <-tryCatch( withCallingHandlers(
           {
@@ -405,7 +406,7 @@ f_fit_mult <-
         
         
       },
-      dirmultinomial = {
+      DM_VGAM = {
         modeloutput <-tryCatch(withCallingHandlers({
           vglm(
             formula = t_formula,
@@ -425,6 +426,28 @@ f_fit_mult <-
         )
         
         
+      },
+      DM_MGLM = {
+        
+        t_formula <- paste0("cbind(",
+                            paste0(colnames(df_i[1:(length(df_i) - 1)]),
+                                   collapse = ","),") ~ group")
+        
+        modeloutput <-tryCatch(withCallingHandlers({
+          MGLMreg(
+            formula = t_formula,
+            dist = "DM",
+            data = df_i
+          )},
+          warning = function(w){
+            warning_text <<- c(warning_text, conditionMessage(w))
+            invokeRestart("muffleWarning")
+          }),
+          error = function(e) {
+            warning_text <<-   trimws(e)
+            modeloutput <- NULL
+          }
+        )
       }
     )
     
@@ -435,21 +458,18 @@ f_fit_mult <-
 ## Apply single step glht function to model -------------------------------
 
 f_sumglht <- function(model,
-                      comp = c("Tukey", "Dunnet"),
+                      mat_mcp,
                       modeltype = c("multinomial",
                                     "pearson",
                                     "afroz",
-                                    "fletcher",
+                                    "farrington",
                                     "deviance",
-                                    "dirmultinomial"),
+                                    "DM_VGAM",
+                                    "DM_MGLM"),
                       dfu = c("zero", "modeldf")) {
   
-  comptype <- match.arg(comp)
   modeltype <- match.arg(modeltype)
   dfu <- match.arg(dfu)
-  
-  model.frame.vglm #future apply needs this call
-  model.vglm
   
   switch(
     modeltype,
@@ -462,14 +482,28 @@ f_sumglht <- function(model,
     afroz = {
       modelparms <- multin2mcp(model, dispersion = "afroz")
     },
-    fletcher = {
-      modelparms <- multin2mcp(model, dispersion = "fletcher")
+    farrington = {
+      modelparms <- multin2mcp(model, dispersion = "farrington")
     },
     deviance = {
       modelparms <- multin2mcp(model, dispersion = "deviance")
     },
-    dirmultinomial = {
-      modelparms <- multin2mcp(model, dispersion = "dirmultinomial")
+    DM_VGAM = {
+      modelparms <- multin2mcp(model, dispersion = "none")
+    },
+    DM_MGLM = {
+      m_contr_mat <- f_generate_contr_mat(num_cats = ncol(model@coefficients), 
+                                          num_groups = nrow(model@coefficients))
+      m_mglm_fit_coefs <- matrix(model@coefficients)
+      
+      m_lors <- m_contr_mat %*% m_mglm_fit_coefs
+      
+      m_vcov_mglm_lors <- m_contr_mat %*% solve(-model@Hessian) %*% t(m_contr_mat)
+      
+      mglm_df <- (ncol(model@data$Y-1))*nrow(model@data$Y)-nrow(model@data$Y)-length(m_mglm_fit_coefs)
+      
+      modelparms <- list(coef = m_lors, vcov = m_vcov_mglm_lors, df = mglm_df)
+      attr(modelparms, "class") <- "parm"
     }
   )
   
@@ -480,8 +514,7 @@ f_sumglht <- function(model,
          zero = {
            glhtout <- tryCatch(withCallingHandlers({summary(glht(
              model = modelparms,
-             linfct = mcp2matrix(model, linfct = mcp(group = comptype))$K,
-             df = 0
+             linfct = mat_mcp
            ))},
            warning = function(w){
              warning_text <<- c(warning_text, conditionMessage(w))
@@ -495,7 +528,7 @@ f_sumglht <- function(model,
          modeldf = {
            glhtout <- tryCatch(withCallingHandlers({summary(glht(
              model = modelparms,
-             linfct = mcp2matrix(model, linfct = mcp(group = comptype))$K,
+             linfct = mat_mcp,
              df = modelparms$df
            ))},
            warning = function(w){
@@ -514,21 +547,18 @@ f_sumglht <- function(model,
 ## Apply glht function to model to obtain simultaneous confints -----------
 
 f_confglht <- function(model,
-                       comp = c("Tukey", "Dunnet"),
+                       mat_mcp,
                        modeltype = c("multinomial",
                                      "pearson",
                                      "afroz",
-                                     "fletcher",
+                                     "farrington",
                                      "deviance",
-                                     "dirmultinomial"),
+                                     "DM_VGAM",
+                                     "DM_MGLM"),
                        dfu = c("zero", "modeldf")) {
   
-  comptype <- match.arg(comp)
   modeltype <- match.arg(modeltype)
   dfu <- match.arg(dfu)
-  
-  model.frame.vglm #future apply needs this call
-  model.vglm
   
   switch(
     modeltype,
@@ -541,14 +571,28 @@ f_confglht <- function(model,
     afroz = {
       modelparms <- multin2mcp(model, dispersion = "afroz")
     },
-    fletcher = {
-      modelparms <- multin2mcp(model, dispersion = "fletcher")
+    farrington = {
+      modelparms <- multin2mcp(model, dispersion = "farrington")
     },
     deviance = {
       modelparms <- multin2mcp(model, dispersion = "deviance")
     },
-    dirmultinomial = {
+    DM_VGAM = {
       modelparms <- multin2mcp(model, dispersion = "none")
+    },
+    DM_MGLM = {
+      m_contr_mat <- f_generate_contr_mat(num_cats = ncol(model@coefficients), 
+                                          num_groups = nrow(model@coefficients))
+      m_mglm_fit_coefs <- matrix(model@coefficients)
+      
+      m_lors <- m_contr_mat %*% m_mglm_fit_coefs
+      
+      m_vcov_mglm_lors <- m_contr_mat %*% solve(-model@Hessian) %*% t(m_contr_mat)
+      
+      mglm_df <- (ncol(model@data$Y-1))*nrow(model@data$Y)-nrow(model@data$Y)-length(m_mglm_fit_coefs)
+      
+      modelparms <- list(coef = m_lors, vcov = m_vcov_mglm_lors, df = mglm_df)
+      attr(modelparms, "class") <- "parm"
     }
   )
   
@@ -556,8 +600,7 @@ f_confglht <- function(model,
          zero = {
            confintout <- tryCatch(confint(glht(
              model = modelparms,
-             linfct = mcp2matrix(model, linfct = mcp(group = comptype))$K,
-             df = 0
+             linfct = mat_mcp
            )),
            error = function(e) {
              return(NULL)
@@ -570,7 +613,7 @@ f_confglht <- function(model,
          modeldf = {
            confintout <- tryCatch(confint(glht(
              model = modelparms,
-             linfct = mcp2matrix(model, linfct = mcp(group = comptype))$K,
+             linfct = mat_mcp,
              df = modelparms$df
            )),
            error = function(e) {
@@ -589,14 +632,14 @@ f_confglht <- function(model,
 
 ## Generate vector of LoRs for given probability matrix --------------------
 
-f_LORov <- function(m_prop, comp = c("Tukey", "Dunnet")) {
+f_LORov <- function(m_prop, comp = c("Tukey", "Dunnett")) {
   
   comptype <- match.arg(comp)
   
   C <- ncol(m_prop)
   G <- nrow(m_prop)
   
-  m_cmCT <- contrMat(rep(1, times = C), type = "Dunnet")
+  m_cmCT <- contrMat(rep(1, times = C), type = "Dunnett")
   m_cmG <- contrMat(rep(1, times = G), type = comptype)
   
   m_delta <- matrix(apply(m_prop, 1, function(x) (m_cmCT %*% log(x))))
@@ -606,7 +649,7 @@ f_LORov <- function(m_prop, comp = c("Tukey", "Dunnet")) {
   
   theta <- (m_cmG %x% m_id) %*% m_delta
   
-  if(comptype == "Dunnet"){
+  if(comptype == "Dunnett"){
     v_CL <- rep((LETTERS[1:(C - 1)]), times = G - 1)
     v_GL <- rep(letters[1:(G - 1)], each = C - 1)
   }
@@ -620,6 +663,39 @@ f_LORov <- function(m_prop, comp = c("Tukey", "Dunnet")) {
 }
 
 
+# Generate Contrast Matrix for MGLM ---------------------------------------
+
+# num_cats: number of categories (C)
+# num_groups: number of groups (G)
+f_generate_contr_mat <- function(num_cats, num_groups) {
+  
+  # Number of contrasts needed: (categories - 1) for intercepts + (categories - 1) for each group
+  num_contrasts <- (num_cats - 1) + (num_groups - 1) * (num_cats - 1)
+  
+  # Initialize contrast matrix
+  mat_T <- matrix(0, nrow = num_contrasts, ncol = num_groups * num_cats)
+  
+  contrast_index <- 1
+  
+  # Intercept contrasts: V2 - V1, V3 - V1, etc.
+  for (j in 1:(num_cats-1)) {
+    mat_T[contrast_index, 1] <- -1       # Beta for intercept V1
+    mat_T[contrast_index, j*num_groups+1] <- 1        # Beta for intercept Vj
+    contrast_index <- contrast_index + 1
+  }
+  
+  # Group-specific contrasts: V2 - V1, V3 - V1, etc., for group2, group3, etc.
+  for (g in 2:num_groups) {
+    for (j in 1:(num_cats-1)) {
+      start_index <- g  # Start of the current group's coefficients
+      mat_T[contrast_index, start_index] <- -1  # Beta for group V1
+      mat_T[contrast_index, start_index + num_groups*j] <- 1   # Beta for group Vj
+      contrast_index <- contrast_index + 1
+    }
+  }
+  
+  return(mat_T)
+}
 
 ## Simulation Function ----------------------------------------------------
 
@@ -654,26 +730,38 @@ f_mult_sim <- function(m_prop, df_simdat){
   v_colminimum <-
     rep(unlist(sapply(l_dat, f_colmin)), times = nlevels(df_simdat$modeltype))
   
-  if (any(
-    df_simdat$modeltype %in% c("multinomial" , "pearson", "afroz", "fletcher", "deviance")
-  )) {
+  if (any(df_simdat$modeltype %in% c("multinomial" ,"pearson", "afroz","farrington", "deviance"))) {
     l_mods_mult <- lapply(seq_along(l_dat), function(i)
-      f_fit_mult(df_i = l_dat[[i]],
-                 modeltype = "multinomial"))
+      f_fit_mult(
+        df_i = l_dat[[i]],
+        modeltype = "multinomial"
+      ))
   }
   
-  if (any(df_simdat$modeltype %in% c("dirmultinomial"))) {
+  if (any(df_simdat$modeltype %in% c("DM_VGAM"))) {
     l_mods_dirmult <- lapply(seq_along(l_dat), function(i)
-      f_fit_mult(df_i = l_dat[[i]],
-                 modeltype = "dirmultinomial"))
+      f_fit_mult(
+        df_i = l_dat[[i]],
+        modeltype = "DM_VGAM"
+      ))
+  }
+  
+  if (any(df_simdat$modeltype %in% c("DM_MGLM"))) {
+    l_mods_DM_MGLM <- lapply(seq_along(l_dat), function(i)
+      f_fit_mult(
+        df_i = l_dat[[i]],
+        modeltype = "DM_MGLM"
+      ))
   }
   
   l_mods <- list()
   for (i in levels(df_simdat$modeltype)) {
-    if (i %in% c("multinomial", "pearson", "afroz", "fletcher", "deviance")) {
+    if (i %in% c("multinomial", "pearson", "afroz", "farrington", "deviance")) {
       l_mods <- c(l_mods, l_mods_mult)
-    } else if (i == "dirmultinomial") {
+    } else if (i == "DM_VGAM") {
       l_mods <- c(l_mods, l_mods_dirmult)
+    } else if (i == "DM_MGLM") {
+      l_mods <- c(l_mods, l_mods_DM_MGLM)
     }
   }
 
@@ -739,11 +827,29 @@ f_mult_sim <- function(m_prop, df_simdat){
   
   # extract estimated dispersion parameters
   # can put out NA for missing model
-  v_disphat <- unlist(lapply(seq_along(l_mods), function(j) 
-    vcov.disp(
-      model = l_mods[[j]],
-      dispersion = as.character(df_simdat$modeltype[j])
-  )))
+  # v_disphat <- unlist(lapply(seq_along(l_mods), function(j) 
+  #   vcov.disp(
+  #     model = l_mods[[j]],
+  #     dispersion = as.character(df_simdat$modeltype[j])
+  # )))
+  
+  v_index_mult <- which(df_simdat$modeltype %in% c("multinomial", "pearson", "afroz", "farrington", "deviance"))
+  
+  l_mat_mcp <-  
+    lapply(seq_along(l_mods), function(a){
+      if (is.null(l_mods[[a]])) {
+        NULL 
+      } else if (df_simdat$modeltype[a] %in% c("multinomial", "pearson", "afroz", "farrington", "deviance", "DM_VGAM")) {
+        
+        mcp2matrix(l_mods[[a]], linfct = mcp(group = as.character(df_simdat$comp[a])))$K
+        
+      } else if (df_simdat$modeltype[a] %in% c("DM_MGLM")) {
+        
+        mcp2matrix(l_mods[[v_index_mult[1]]], linfct = mcp(group = as.character(df_simdat$comp[a])))$K
+        
+      }
+    }
+    )
   
   # apply glht function with single step adjustment to each model
   l_ressumglht <-
@@ -753,7 +859,7 @@ f_mult_sim <- function(m_prop, df_simdat){
       } else {
         f_sumglht(
           model = l_mods[[i]],
-          comp = as.character(df_simdat$comp[i]),
+          mat_mcp = l_mat_mcp[[i]],
           modeltype = as.character(df_simdat$modeltype[i]),
           dfu = as.character(df_simdat$dfu[i])
         )
@@ -782,7 +888,7 @@ f_mult_sim <- function(m_prop, df_simdat){
       } else {
         f_confglht(
           model = l_mods[[i]],
-          comp = as.character(df_simdat$comp[i]),
+          mat_mcp = l_mat_mcp[[i]],
           modeltype = as.character(df_simdat$modeltype[i]),
           dfu = as.character(df_simdat$dfu[i])
         )
@@ -857,6 +963,19 @@ f_mult_sim <- function(m_prop, df_simdat){
         as.integer(any(l_ressumglht[[i]]$test$pvalues < 0.05))
       })
   
+  # count pPower
+  # count percentage how many hypothesis are correctly rejected
+  countpPower <-
+    sapply(seq_along(l_ressumglht), function(i)
+      if (is.null(l_ressumglht[[i]])) {
+        NA
+      } else if (length(l_LORov[[i]]) != length(l_ressumglht[[i]]$test$coefficients)) {
+        NA
+      } else {
+        sum(l_ressumglht[[i]]$test$pvalues[!!l_LORov[[i]]] < 0.05)/length(l_ressumglht[[i]]$test$pvalues[!!l_LORov[[i]]])
+      })
+  
+  
   # count coverage confint
   # count 1 if logitprob lies outside interval
   countConf <-
@@ -900,8 +1019,9 @@ f_mult_sim <- function(m_prop, df_simdat){
       cFWER = countFWER,
       cPower = countPower,
       cgPower = countgPower,
+      cpPower = countpPower,
       cConf = countConf,
-      disphat = v_disphat,
+      #disphat = v_disphat,
       cerrnas = checkerrnas,
       cerrfin = checkerrfin,
       cwarwz = checkwarwz,
@@ -1353,14 +1473,14 @@ df_simdat <- expand.grid(
   phi = c(1.01, 1.5, 2, 5, 8),
   b = c(5, 10, 20),
   m = c(10, 20),
-  comp = c("Dunnet","Tukey"),
-  modeltype = c("multinomial","pearson","afroz","fletcher","deviance"),
+  comp = c("Dunnett","Tukey"),
+  modeltype = c("multinomial","pearson","afroz","farrington","deviance","DM_VGAM","DM_MGLM"),
   dfu = c("modeldf"),
-  nsim = 50
+  nsim = 20
 )
 
 # Split up into multiple Iterations to get intermediate results
-sim_iterations <- 20
+sim_iterations <- 5
 system.time(for (i in 1:sim_iterations) {
   print(paste("Iteration",i))
   system.time(for (i in 1:length(l_props)) {
